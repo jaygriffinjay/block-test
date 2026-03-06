@@ -1,46 +1,71 @@
-# Bootstrap Fullstack Webapp
+# Block-Based Blog
 
-An opinionated Next.js boilerplate. Clone it, delete what you don't need, start building.
+A Notion-style block data model for a personal blog, backed by SQLite. Every piece of content — headings, paragraphs, comments, entire pages — is a row in one table. One recursive query fetches a page tree, one React component renders it.
+
+## The Idea
+
+A React page isn't source code — it's rows in a table. AI writes blocks, one query fetches the tree, BlockRenderer turns it into React components. That's the entire pipeline.
+
+```
+markdown → mdast → blocks → SQLite → recursive CTE → tree → React
+```
 
 ## Stack
 
-**Next.js 16** with App Router and React 19. Server Components by default, `"use client"` only when you need state or browser APIs.
+- **Next.js 16** / React 19 / TypeScript / App Router
+- **SQLite** (better-sqlite3, WAL mode) — one table, one schema
+- **Tailwind CSS v4** + **shadcn/ui** (new-york)
+- **Custom typography system** — `H1`–`H6`, `Paragraph`, `Bold`, `Italic`, etc.
+- **mdast-util-from-markdown** — markdown to blocks ingestion
+- **nanoid** — short readable block IDs
 
-**Tailwind CSS v4** — configured entirely in `globals.css` via `@theme inline`. No `tailwind.config.js`. All theme tokens are CSS variables bridged into Tailwind's utility system.
+## Block Schema
 
-**shadcn/ui** (new-york style) — components are copied into `src/components/ui/` so you own the code. Install new ones with `npx shadcn add <component>`. Backed by Radix UI primitives.
+```sql
+CREATE TABLE blocks (
+  id         TEXT PRIMARY KEY,   -- nanoid
+  type       TEXT NOT NULL,      -- page, h1, paragraph, comment, etc.
+  props      TEXT DEFAULT '{}',  -- JSON: { title, text, href, approved, ... }
+  content    TEXT DEFAULT '[]',  -- JSON: ordered array of child block IDs
+  parent_id  TEXT,               -- upward pointer (null for root pages)
+  position   INTEGER DEFAULT 0,  -- sibling sort order
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+```
 
-**Custom typography system** — `src/components/typography/` wraps every HTML text element (`H1`–`H6`, `Paragraph`, `Bold`, `Italic`, `Link`, `InlineCode`, etc.) into composable, overridable components. Never write raw `<h1>` or `<p>` tags.
+**Block types:** `page`, `h1`–`h6`, `paragraph`, `blockquote`, `list`, `list_item`, `divider`, `text`, `bold`, `italic`, `underline`, `strikethrough`, `highlight`, `inline_code`, `small`, `link`, `comment`
 
-**next-themes** for light / dark / system mode. Switches via `.dark` class on `<html>` so all CSS variable overrides fire automatically.
+## Features
 
-**oklch color space** for all theme tokens. Perceptually uniform, P3-gamut capable, human-readable values.
+### Block System
 
-## Dependencies
+- Recursive CTE queries for tree fetching, ancestry chains, full-text search
+- `BlockRenderer` maps every block type to a React component
+- `BlockTheme` context for per-block-type className overrides
+- MD → blocks ingestion pipeline
 
-- `radix-ui` — headless primitives underlying all shadcn components
-- `lucide-react` — icons
-- `react-hook-form` + `@hookform/resolvers` + `zod` — forms and validation
-- `recharts` — charts (via shadcn chart wrapper)
-- `sonner` — toast notifications
-- `next-themes` — dark mode
-- `cmdk` — command menu primitive
-- `vaul` — drawer primitive
-- `embla-carousel-react` — carousel
-- `input-otp` — OTP input
-- `react-day-picker` + `date-fns` — date picker
-- `react-resizable-panels` — resizable split layouts
-- `class-variance-authority` + `clsx` + `tailwind-merge` — class utilities (`cn()`)
-- `tw-animate-css` — animation utilities for shadcn transitions
+### Page Editor
 
-## Fonts
+- Infinite nested pages with collapsible sidebar nav
+- Breadcrumb ancestry trail
+- Inline contentEditable editing with debounced PATCH
+- Hover toolbar: add block below, delete, drag (placeholder)
+- Editable page titles with emoji icon picker
 
-Four fonts loaded via `next/font/google`, exposed as CSS variables on `<body>`. Apply with `style={{ fontFamily: "var(--font-name)" }}` — not Tailwind classes.
+### Comment System
 
-- `--font-geist-sans` — default body font
-- `--font-geist-mono` — monospace alternative
-- `--font-jetbrains-mono` — code and technical text, has italic variant
-- `--font-sekuya` — display / hero headings
+- Comments are blocks — same DB, same queries, same delete
+- Anonymous posting with rate limiting + input validation
+- Approval queue: comments start pending (`approved: false`), admin approves
+- No accounts, no OAuth, no third-party dependencies
+
+### Security
+
+- `ADMIN_TOKEN` env var gates all write operations
+- Block API (POST/PATCH/DELETE) requires admin auth
+- Comment posting is public; moderation is admin-only
+- Rate limiting on comment submissions (1 per 10s per IP)
 
 ## Getting Started
 
@@ -49,53 +74,91 @@ npm install
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000).
+Open [http://localhost:3000](http://localhost:3000). The database is created and seeded automatically on first page load.
+
+### Admin Setup
+
+```bash
+# Generate a token
+openssl rand -base64 32
+
+# Add to .env.local (gitignored)
+echo "ADMIN_TOKEN=<your-token>" > .env.local
+```
+
+Set the same token in the admin UI at `/admin/comments` (saved to localStorage).
 
 ## Project Structure
 
 ```
 src/
-  app/
-    fonts.ts            # Font definitions
-    globals.css         # Tailwind config, theme tokens, base styles
-    layout.tsx          # Root layout — ThemeProvider, TooltipProvider, fonts
-  components/
-    typography/         # H1–H6, Paragraph, Bold, Italic, Link, InlineCode, etc.
-    ui/                 # shadcn components
-    mode-toggle.tsx     # Light / dark / system switcher
   lib/
-    registry.ts         # Every component: import path, exports, description
-    utils.ts            # cn() utility
-  hooks/
-    use-mobile.ts
-.github/
-  copilot-instructions.md   # Copilot rules and stack context
-  skills/build-ui/SKILL.md  # Copilot skill for building UI
+    blocks/
+      types.ts          # BlockType, Block, BlockNode, helpers
+      db.ts             # All SQLite operations (read, write, query, comments)
+      md.ts             # Markdown → blocks converter
+      seed.ts           # Auto-seed workspace from content/*.md
+    auth.ts             # Admin token verification
+    admin-fetch.ts      # Client-side fetch wrapper with auth headers
+  components/
+    blocks/
+      BlockRenderer.tsx  # Maps block types → React components
+      BlockTheme.tsx     # Per-block-type className overrides
+      EditableBlock.tsx  # Inline editing + hover toolbar
+      PageShell.tsx      # Page editor wrapper (sidebar, breadcrumbs, content)
+      PageSidebar.tsx    # Recursive collapsible page tree nav
+      Breadcrumbs.tsx    # Ancestor chain display
+      CommentForm.tsx    # Anonymous comment submission form
+      CommentList.tsx    # Comment display with relative timestamps
+      CommentSection.tsx # Drop-in form + list wrapper
+    typography/          # H1–H6, Paragraph, Bold, Italic, Link, etc.
+    ui/                  # shadcn components
+  app/
+    api/
+      blocks/            # GET (public) / POST, PATCH, DELETE (admin)
+      comments/          # GET, POST (public) / PATCH, DELETE (admin)
+      test/              # Debugger dispatch endpoint
+    pages/               # Nested page editor
+    admin/comments/      # Moderation queue (with kitten explosion)
+    examples/            # Demo pages
+content/                 # Seed markdown files
+scripts/                 # CLI tools (seed.ts, import.ts)
+data/                    # SQLite database (gitignore the -shm/-wal files)
 ```
 
-## Key Decisions
+## API
 
-**Typography components over raw HTML.** `<H1>`, `<Paragraph>`, `<Bold>` etc. accept `className` and `style`, nest freely inside each other, and enforce consistent defaults. Overriding is always additive.
+| Method | Endpoint                     | Auth   | Description                   |
+| ------ | ---------------------------- | ------ | ----------------------------- |
+| GET    | `/api/blocks`                | Public | List root pages               |
+| GET    | `/api/blocks?tree=<id>`      | Public | Full block subtree            |
+| GET    | `/api/blocks/[id]`           | Public | Single block tree             |
+| POST   | `/api/blocks`                | Admin  | Create block                  |
+| PATCH  | `/api/blocks/[id]`           | Admin  | Update block                  |
+| DELETE | `/api/blocks/[id]`           | Admin  | Delete block + descendants    |
+| GET    | `/api/comments?page=<id>`    | Public | Approved comments             |
+| GET    | `/api/comments?pending=true` | Admin  | All pending comments          |
+| POST   | `/api/comments`              | Public | Submit comment (rate-limited) |
+| PATCH  | `/api/comments/[id]`         | Admin  | Approve comment               |
+| DELETE | `/api/comments/[id]`         | Admin  | Delete comment                |
 
-**Fonts via CSS variables, not Tailwind classes.** CSS variables work inside any component, can be inherited through the tree, and can be swapped at runtime. Tailwind font utilities can't do any of that.
+## Pages
 
-**Semantic color tokens everywhere.** `text-foreground`, `bg-primary`, `text-muted-foreground` — not `text-gray-900` or `text-blue-500`. Dark mode flips automatically, no per-component `dark:` prefixes needed.
-
-**`registry.ts` as source of truth.** Documents every component in the project so Copilot (and you) always know what's available, where it lives, and when to use it.
-
-## Reference Pages
-
-Included as living documentation — delete or keep as needed.
-
-- `/typography` — every typography component, edge cases, composition examples
-- `/shadcn` — every major shadcn component with basic examples
-- `/design` — how `globals.css`, the theme system, and font system work
+| Route                | Description                                               |
+| -------------------- | --------------------------------------------------------- |
+| `/examples`          | Index of all demo pages                                   |
+| `/examples/blocks`   | Block renderer demo with themed variants                  |
+| `/examples/query`    | Query the block DB — headings, links, search, type counts |
+| `/examples/comments` | Live comment form + list                                  |
+| `/examples/test`     | Interactive debugger for every DB operation               |
+| `/pages`             | Nested page editor                                        |
+| `/admin/comments`    | Comment moderation queue                                  |
 
 ## Scripts
 
 ```bash
-npm run dev      # dev server
+npm run dev      # dev server (seeds DB on first load)
 npm run build    # production build
-npm run start    # serve production build
-npm run lint     # eslint
+npx tsx scripts/seed.ts      # manually seed the database
+npx tsx scripts/import.ts    # import a markdown file
 ```
