@@ -59,6 +59,48 @@ const EXAMPLES = [
     description:
       "Timed multiplication quiz for kids — color-coded problem groups, answer dialog, and graded results.",
   },
+  {
+    href: "/examples/blocks",
+    title: "Block Renderer",
+    description:
+      "Live demo of the block system — page tree stored as SQLite rows, rendered by BlockRenderer.",
+  },
+  {
+    href: "/examples/block-system",
+    title: "Block System",
+    description:
+      "Architecture overview, use cases, honest pushback, and roadmap for the UI-as-data approach.",
+  },
+  {
+    href: "/examples/query",
+    title: "Block Queries",
+    description:
+      "Query the block database — all headings, links, type distribution, full-text search.",
+  },
+  {
+    href: "/pages",
+    title: "Pages (Editor)",
+    description:
+      "Infinite nested pages with sidebar nav, breadcrumbs, and inline editing.",
+  },
+  {
+    href: "/examples/test",
+    title: "Block Debugger",
+    description:
+      "Interactive test harness — MD→blocks pipeline, CRUD ops, tree queries, search. See every operation's raw output.",
+  },
+  {
+    href: "/examples/comments",
+    title: "Comments",
+    description:
+      "Drop-in comment system — comments are blocks, stored in the same DB. No accounts needed.",
+  },
+  {
+    href: "/admin/comments",
+    title: "Comment Queue (Admin)",
+    description:
+      "Moderation queue with approval/delete. Also: kittens.",
+  },
 ];
 
 export default function ExamplesPage() {
