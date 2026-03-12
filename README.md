@@ -2,6 +2,8 @@
 
 A Notion-style block data model for a personal blog, backed by SQLite. Every piece of content — headings, paragraphs, comments, entire pages — is a row in one table. One recursive query fetches a page tree, one React component renders it.
 
+![Block system screenshot](public/blocks-image.png)
+
 ## The Idea
 
 A React page isn't source code — it's rows in a table. AI writes blocks, one query fetches the tree, BlockRenderer turns it into React components. That's the entire pipeline.
